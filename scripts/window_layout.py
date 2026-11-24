@@ -6,10 +6,11 @@ from dataclasses import dataclass
 
 
 CARD_LEFTS = {"hex_1": 0.2539, "hex_2": 0.4414, "hex_3": 0.625}
-# Four-card offers keep the card size and spacing (~0.1848 of the 16:9 width,
-# measured from docs/demo.png) and stay centered. Distinct keys let one capture
-# and one overlay hold both layouts. Calibrate with a real 4-card frame.
-FOUR_CARD_LEFTS = {f"quad_{i + 1}": round(0.5 + (i - 1.5) * 0.1848 - 0.0625, 4)
+# Four-card offers are centered with a wider pitch than three-card ones:
+# 0.192 of the 16:9 width, measured from a 4-card match frame (card frames at
+# 256/642/1026/1410 of 2000 px, 384 px apart). Distinct keys let one capture
+# and one overlay hold both layouts.
+FOUR_CARD_LEFTS = {f"quad_{i + 1}": round(0.5 + (i - 1.5) * 0.192 - 0.0625, 4)
                    for i in range(4)}
 CARD_GROUPS = (tuple(CARD_LEFTS), tuple(FOUR_CARD_LEFTS))
 ALL_CARD_LEFTS = {**CARD_LEFTS, **FOUR_CARD_LEFTS}
