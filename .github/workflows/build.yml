@@ -1,0 +1,102 @@
+name: Build EXE
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: windows-latest
+    timeout-minutes: 40
+    env:
+      PYTHONIOENCODING: utf-8
+      PYTHONUTF8: "1"
+    steps:
+      - uses: actions/checkout@v4
+
+      # rapidocr_onnxruntime<=1.4.4 breaks on Python 3.13+ (see AGENTS.md 2.1).
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: requirements.txt
+
+      - name: Install dependencies
+        shell: bash
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements.txt
+
+      - name: Run tests
+        shell: bash
+        run: |
+          python tests/test_auto_detect.py
+          python -m unittest discover -s tests -p "test_*.py"
+
+      - name: Build
+        run: python build.py
+
+      - name: Check and package build
+        id: package
+        shell: pwsh
+        run: |
+          $app = Get-ChildItem dist -Directory -Filter "build_*" |
+            Sort-Object Name -Descending | Select-Object -First 1 |
+            ForEach-Object { Join-Path $_.FullName "ARAMHelper" }
+          $required = @(
+            "ARAMHelper.exe",
+            "data/hero_augments.csv",
+            "data/champions.json",
+            "data/pinyin_map.json",
+            "_internal/rapidocr_onnxruntime/config.yaml",
+            "_internal/rapidocr_onnxruntime/models/ch_PP-OCRv4_det_infer.onnx",
+            "_internal/rapidocr_onnxruntime/models/ch_PP-OCRv4_rec_infer.onnx",
+            "_internal/rapidocr_onnxruntime/models/ch_ppocr_mobile_v2.0_cls_infer.onnx"
+          )
+          $missing = $required | Where-Object { -not (Test-Path (Join-Path $app $_)) }
+          if ($missing) { throw "Build is missing: $($missing -join ', ')" }
+
+          if ("${{ github.ref_type }}" -eq "tag") { $version = "${{ github.ref_name }}" }
+          else { $version = "${{ github.sha }}".Substring(0, 7) }
+          $zip = "ARAMHelper_$version.zip"
+          Compress-Archive -Path $app -DestinationPath $zip
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  $zip" | Tee-Object -FilePath "$zip.sha256"
+          "zip=$zip" >> $env:GITHUB_OUTPUT
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.package.outputs.zip }}
+          path: |
+            ${{ steps.package.outputs.zip }}
+            ${{ steps.package.outputs.zip }}.sha256
+          retention-days: 14
+          compression-level: 0
+
+  release:
+    # A pushed v* tag creates a draft release; publish it by hand after testing.
+    if: github.ref_type == 'tag'
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: release
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          draft: true
+          files: release/*

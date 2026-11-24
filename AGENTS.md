@@ -127,4 +127,5 @@ GUI 和 CLI 共用 `PopupDetector`。悬浮窗显示时约每 120ms 采样，发
 3. **打包验证规范**：
    * 修改依赖或静态资源后，运行 `python build.py` 打包，检查生成目录下是否含有 `rapidocr_onnxruntime` 核心模型与配置文件。
    * 打包时必须使用黑名单机制过滤大型数据科学库（如 `torch`、`pandas`、`scipy`），保证产物体积轻量稳定。
-4. **画面回放**：样本采集、标注与统计定义见 [回放样本说明](tests/replay_samples/README.md)。比较视觉参数时使用相同片段与标注。
+4. **持续构建**：[`.github/workflows/build.yml`](.github/workflows/build.yml) 在推送 `main`、PR 和手动触发时，于 Windows + Python 3.12 运行测试、`build.py` 打包并核对 EXE、数据与 3 个 OCR 模型，产物 ZIP 保留 14 天。推送 `v*` 标签时额外创建草稿 Release，实测后手动发布。
+5. **画面回放**：样本采集、标注与统计定义见 [回放样本说明](tests/replay_samples/README.md)。比较视觉参数时使用相同片段与标注。
