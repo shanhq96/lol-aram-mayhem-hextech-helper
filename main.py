@@ -347,29 +347,24 @@ class GameAnalyzer:
         return sum("match_name" in item for item in results.values())
 
     def _analyze_best_group(self, hero, images, retry_images):
-        """The offer has three or four cards. Their title boxes do not overlap,
-        so read every box once, keep the layout with more card names, then
-        retry only that layout's unreadable cards with the expanded crop."""
-        def subset(source, keys):
-            return {key: source[key] for key in keys if key in source}
+        """Resolve three- or four-card layouts using both passes when needed."""
+        group_results = [
+            self.analyze(hero, images={key: images[key] for key in keys if key in images})
+            for keys in CARD_GROUPS
+        ]
+        matching_groups = [results for results in group_results if self._matched(results)]
+        # The crops overlap at their edges, where stray text can match a card name.
+        # Keep both layouts in contention when the first pass has weak or competing matches.
+        if len(matching_groups) == 1 and self._matched(matching_groups[0]) >= 2:
+            group_results = matching_groups
 
-        group_results = [self.analyze(hero, images=subset(images, keys)) for keys in CARD_GROUPS]
-        if max(map(self._matched, group_results)) == 0:
-            # Nothing readable in either layout: retry both, as the old
-            # three-card path retried every card.
-            group_results = [
-                self.analyze_partial(hero, subset(retry_images, keys), results, list(results),
-                                     enhance=True)
-                for keys, results in zip(CARD_GROUPS, group_results)
-            ]
-            return max(group_results, key=self._matched)
-
-        results = max(group_results, key=self._matched)  # ties keep three cards
-        failed = [key for key, item in results.items() if "match_name" not in item]
-        if not failed:
-            return results
-        return self.analyze_partial(hero, subset(retry_images, failed), results, failed,
-                                    enhance=True)
+        for i, results in enumerate(group_results):
+            failed = [key for key, item in results.items() if "match_name" not in item]
+            if failed:
+                group_results[i] = self.analyze_partial(
+                    hero, retry_images, results, failed, enhance=True
+                )
+        return max(group_results, key=self._matched)  # remaining ties keep three cards
 
     def _read_title(self, img):
         boxes, _ = self.ocr(img)

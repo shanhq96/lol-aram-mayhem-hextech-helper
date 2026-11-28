@@ -132,6 +132,37 @@ class ManualOCRTests(unittest.TestCase):
         self.assertEqual([row["highlight"] for row in result.values()], [False, True, False, False])
         self.assertEqual(self.analyzer.ocr.call_count, 7)
 
+    def test_f6_recovers_four_cards_when_three_card_crops_match_stray_text(self):
+        layout = GameLayout(1, ScreenRect(0, 0, 2560, 1440))
+        marked_keys = (*FOUR_CARD_LEFTS, "hex_1", "hex_2")
+        frame = self.frame_with_titles(layout, marked_keys)
+        for key in marked_keys:
+            rect = layout.title_region(key)
+            center_x = rect.left + rect.width // 2
+            # Give expanded crops a white point so normalization preserves the title markers.
+            frame[rect.top - 6:rect.top - 2, center_x - 8:center_x + 8, :3] = 255
+
+        expected_names = ["珠光护手", "心灵净化", "升级：耀光", "？？？"]
+        card_names = dict(zip((40, 80, 120, 160), expected_names))
+        stray_names = {200: "！！！", 240: "珠光手镯"}
+        for three_matches, four_matches in ((1, 0), (1, 1), (2, 1)):
+            with self.subTest(three_matches=three_matches, four_matches=four_matches):
+                first_pass = dict(list(stray_names.items())[:three_matches])
+                first_pass.update(list(card_names.items())[:four_matches])
+
+                def read(image):
+                    if image.shape[0] == 176:
+                        name = card_names.get(int(image[88, 320]))
+                    else:
+                        name = first_pass.get(int(image[60, 320]))
+                    return ([ocr_box(name)], None) if name else (None, None)
+
+                result = self.run_f6(layout, frame, read)
+                self.assertEqual(list(result), list(FOUR_CARD_LEFTS))
+                self.assertEqual([row.get("match_name") for row in result.values()], expected_names)
+                self.assertEqual([row["highlight"] for row in result.values()],
+                                 [False, True, False, False])
+
     def test_f6_retries_both_layouts_when_nothing_is_readable(self):
         layout = GameLayout(1, ScreenRect(0, 0, 2560, 1440))
         frame = self.frame_with_titles(layout, FOUR_CARD_LEFTS)
